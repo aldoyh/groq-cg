@@ -175,33 +175,56 @@ function getGalleryKey(timestamp: number, randomHash: string, ip: string): strin
 	return `gallery_${timestamp}_${randomHash}_${ipHash}`;
 }
 
+function getRedisUrl() {
+	return process.env.UPSTASH_REDIS_URL || process.env.REDIS_URL;
+}
+
 // Legacy Redis function - no longer used
 export async function saveToStorage(key: string, value: string) {
-	const redis = new Redis(process.env.UPSTASH_REDIS_URL);
-	await redis.set(key, value);
+	const redisUrl = getRedisUrl();
+	if (!redisUrl) return;
+	const redis = new Redis(redisUrl);
+	try {
+		await redis.set(key, value);
+	} finally {
+		await redis.quit();
+	}
 }
 
 // Legacy Redis function - no longer used
 export async function getFromStorage(key: string) {
-	const redis = new Redis(process.env.UPSTASH_REDIS_URL);
-	const value = await redis.get(key);
-	return value;
+	const redisUrl = getRedisUrl();
+	if (!redisUrl) return null;
+	const redis = new Redis(redisUrl);
+	try {
+		return await redis.get(key);
+	} finally {
+		await redis.quit();
+	}
 }
 
 // Legacy Redis function - no longer used
 export async function getFromStorageWithRegex(key: string): Promise<{value: string, key: string}> {
-	const redis = new Redis(process.env.UPSTASH_REDIS_URL);
-	const keys = await redis.keys(key);
-	if(keys.length === 0) {
-		throw new Error("Not found");
+	const redisUrl = getRedisUrl();
+	if (!redisUrl) throw new Error("Not found");
+	const redis = new Redis(redisUrl);
+	try {
+		const keys = await redis.keys(key);
+		if(keys.length === 0) {
+			throw new Error("Not found");
+		}
+
+		return {value: (await redis.get(keys[0])) || "", key: keys[0]};
+	} finally {
+		await redis.quit();
 	}
-	
-	return {value: await getFromStorage(keys[0]), key: keys[0]};
 }
 
 // Legacy Redis function - no longer used
 export async function getGalleryKeys(): Promise<string[]> {
-	const redis = new Redis(process.env.UPSTASH_REDIS_URL);
+	const redisUrl = getRedisUrl();
+	if (!redisUrl) return [];
+	const redis = new Redis(redisUrl);
 	const keys: string[] = [];
 	let cursor = 0;
 	const count = 10000;
@@ -213,6 +236,7 @@ export async function getGalleryKeys(): Promise<string[]> {
 		keys.push(...batch);
 	} while (batch.length > 0);
 
+	await redis.quit();
 	return keys.sort().reverse(); // Sort in descending order to get latest first
 }
 
@@ -303,10 +327,13 @@ export async function removeGalleryItem(sessionId: string, version: string, requ
 					throw new Error("Unauthorized: You can only remove your own submissions");
 				}
 
-				const redis = new Redis(process.env.REDIS_URL!);
-				await redis.del(key);
-				await redis.quit();
-				redisSuccess = true;
+				const redisUrl = getRedisUrl();
+				if (redisUrl) {
+					const redis = new Redis(redisUrl);
+					await redis.del(key);
+					await redis.quit();
+					redisSuccess = true;
+				}
 			}
 		} catch (error) {
 			if (error instanceof Error && error.message.includes("Unauthorized")) {
