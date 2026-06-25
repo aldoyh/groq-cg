@@ -43,7 +43,7 @@ export async function POST(
 
 	try {
 		const { html, signature, avoidGallery, ...rest } = await request.json();
-		const ip = request.headers.get("x-forwarded-for") || request.ip || "unknown";
+		const ip = request.ip ?? "unknown";
 
 		if (await isIPBlocked(ip)) {
 			console.warn(`Someone tried to submit from a blocked IP: ${ip}`);

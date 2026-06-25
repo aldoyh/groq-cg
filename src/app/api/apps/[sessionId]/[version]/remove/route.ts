@@ -6,7 +6,7 @@ export async function POST(
     { params }: { params: { sessionId: string; version: string } }
 ) {
     const { sessionId, version } = params;
-    const ip = request.headers.get("x-forwarded-for") || request.ip || "unknown";
+    const ip = request.ip ?? "unknown";
 
     try {
         const removed = await removeGalleryItem(sessionId, version, ip);
